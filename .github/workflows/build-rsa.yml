@@ -55,3 +55,31 @@ jobs:
         with:
           name: firmware_${{ matrix.env }}
           path: out/*.bin
+
+  publish:
+    # copy built .bin files into the 'firmware-builds' branch (plain git access, no login needed to fetch)
+    needs: build
+    if: always() && needs.build.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+          merge-multiple: true
+
+      - name: Commit firmware to firmware-builds branch
+        run: |
+          ls -l art || exit 0
+          [ -n "$(ls art/*.bin 2>/dev/null)" ] || { echo "nothing to publish"; exit 0; }
+          git init -q pub && cd pub
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git fetch -q --depth 1 origin firmware-builds; then git checkout -q -b firmware-builds FETCH_HEAD; else git checkout -q --orphan firmware-builds; fi
+          DIR="${GITHUB_REF_NAME//\//_}"
+          mkdir -p "$DIR" && cp ../art/*.bin "$DIR/"
+          git add -A
+          git commit -q -m "firmware: $GITHUB_REF_NAME @ ${GITHUB_SHA::7}" || { echo "no changes"; exit 0; }
+          git push -q origin firmware-builds
