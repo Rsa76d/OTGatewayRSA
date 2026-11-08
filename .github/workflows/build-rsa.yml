@@ -1,0 +1,46 @@
+name: Build firmware (RSA)
+
+on:
+  push:
+    branches: [ 'rsa/**', master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [ d1_mini, d1_mini32 ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+            .pio/libdeps
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install -U platformio
+
+      - name: Build ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }}
+
+      - name: Collect firmware
+        run: |
+          VER=$(grep -m1 '^version' platformio.ini | sed 's/.*= *//')
+          mkdir -p out
+          cp .pio/build/${{ matrix.env }}/firmware.bin "out/firmware_${{ matrix.env }}_${VER}.bin"
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware_${{ matrix.env }}
+          path: out/*.bin
