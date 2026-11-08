@@ -351,10 +351,12 @@ protected:
           
           auto& rSensor = Sensors::results[sensorId];
           float value = instance.getTempC(sSensor.address);
-          if (value == DEVICE_DISCONNECTED_C) {
+          // RSA: 85.0 C is the DS18B20 power-on reset value (sensor rebooted before a conversion
+          // finished, e.g. supply dip on a long cable) - treat it like a failed read, not a real temperature
+          if (value == DEVICE_DISCONNECTED_C || value == 85.0f) {
             Log.swarningln(
-              FPSTR(L_SENSORS_DALLAS), F("GPIO %hhu, sensor #%hhu '%s': failed receiving data"),
-              sSensor.gpio, sensorId, sSensor.name
+              FPSTR(L_SENSORS_DALLAS), F("GPIO %hhu, sensor #%hhu '%s': failed receiving data (%.2f)"),
+              sSensor.gpio, sensorId, sSensor.name, value
             );
 
             if (rSensor.signalQuality > 0) {
