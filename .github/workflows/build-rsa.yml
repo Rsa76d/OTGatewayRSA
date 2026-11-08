@@ -1,0 +1,57 @@
+name: Build firmware (RSA)
+
+on:
+  push:
+    branches: [ 'rsa/**', master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [ d1_mini, d1_mini32 ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+            .pio/libdeps
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install -U platformio
+
+      - name: Use git tag for ESP32 platform (release zip returns 5xx)
+        run: |
+          sed -i 's#https://github.com/pioarduino/platform-espressif32/releases/download/\([0-9.]*\)/platform-espressif32.zip#https://github.com/pioarduino/platform-espressif32.git\#\1#' platformio.ini
+          grep -n 'pioarduino/platform-espressif32' platformio.ini
+
+      - name: Build ${{ matrix.env }}
+        run: |
+          # retry: platform/toolchain downloads from GitHub releases sometimes fail with 5xx
+          for i in 1 2 3; do
+            pio run -e ${{ matrix.env }} && exit 0
+            echo "Build attempt $i failed, retrying in 20 s..."; sleep 20
+          done
+          exit 1
+
+      - name: Collect firmware
+        run: |
+          VER=$(grep -m1 '^version' platformio.ini | sed 's/.*= *//')
+          mkdir -p out
+          cp .pio/build/${{ matrix.env }}/firmware.bin "out/firmware_${{ matrix.env }}_${VER}.bin"
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware_${{ matrix.env }}
+          path: out/*.bin
